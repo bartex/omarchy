@@ -22,10 +22,10 @@ eval "$(omarchy-server-palette)"
 
 if [[ ${OMARCHY_BBS_UNICODE:-1} == "1" ]]; then
   TL="┌"; TR="┐"; BL="└"; BR="┘"; HR="─"; VR="│"
-  SEP=" ▪ "; TICK="✓"; FULL="▓"; EMPTY="░"; MARK="▌"
+  SEP=" ▪ "; TICK="✓"; FULL="▓"; EMPTY="░"; MARK="▌"; ELLIPSIS="…"
 else
   TL="+"; TR="+"; BL="+"; BR="+"; HR="-"; VR="|"
-  SEP=" - "; TICK="+"; FULL="#"; EMPTY="."; MARK=">"
+  SEP=" - "; TICK="+"; FULL="#"; EMPTY="."; MARK=">"; ELLIPSIS="~"
 fi
 
 LEFT_W=44
@@ -37,6 +37,15 @@ HINTS=("" "" "" "" "" "" "" "" "")
 selected=0
 
 guarded() { timeout "${1}s" "${@:2}" 2>/dev/null || true; }
+
+# A value longer than its column pushes the border out, and a hostname or an
+# interface list is exactly the sort of thing that is longer somewhere else.
+fit() {
+  local text=$1 width=$2
+  (( width > 0 )) || { printf ''; return; }
+  (( ${#text} <= width )) && { printf '%s' "$text"; return; }
+  printf '%s%s' "${text:0:width - 1}" "$ELLIPSIS"
+}
 
 repeat() {
   local blanks
@@ -153,6 +162,7 @@ build_left() {
       plain="$marker[$key] $label"
       paint="$marker_paint$OMARCHY_BBS_KEY[$key]$OMARCHY_BBS_RESET $OMARCHY_BBS_BRIGHT$label$OMARCHY_BBS_RESET"
     else
+      hint=$(fit "$hint" $(( LEFT_W - 12 - ${#label} )))
       local gap=$(( LEFT_W - 2 - ${#marker} - 4 - ${#label} - ${#hint} - 2 ))
       (( gap > 1 )) || gap=1
       plain="$marker[$key] $label $(repeat '.' "$gap") $hint"
@@ -176,7 +186,15 @@ build_left() {
 
 box_line() {
   local label=$1 value=$2 meter_used=$3 meter_total=$4
-  local body
+
+  # The line is a border, two spaces, an eight-column label, an optional
+  # eleven-column meter, then the value, and it has to end on RIGHT_W.
+  if (( meter_total > 0 )); then
+    value=$(fit "$value" $(( RIGHT_W - 22 )))
+  else
+    value=$(fit "$value" $(( RIGHT_W - 11 )))
+  fi
+
   if (( meter_total > 0 )); then
     local width=10 filled
     filled=$(( meter_used * width / meter_total ))
@@ -232,6 +250,7 @@ build_right() {
   start=${#RIGHT_PLAIN[@]}
   local line
   while IFS= read -r line; do
+    line=$(fit "$line" $(( RIGHT_W - 4 )))
     RIGHT_PLAIN+=("$VR  $line")
     RIGHT_PAINT+=("$OMARCHY_BBS_RULE$VR$OMARCHY_BBS_RESET  $OMARCHY_BBS_FG$line$OMARCHY_BBS_RESET")
   done < <(motd_lines)
@@ -239,6 +258,9 @@ build_right() {
   close_box
 }
 
+# Composed into one string and written once, over the previous frame rather
+# than after blanking it. Clearing first makes the screen flash on every
+# keypress, which is unmissable when an arrow key repeats.
 draw() {
   local cols
   cols=$(tput cols 2>/dev/null || echo 80)
@@ -247,41 +269,52 @@ draw() {
   (( cols >= LEFT_W + RIGHT_W + 6 )) || wide=0
 
   build_left
-  (( wide )) && build_right || { RIGHT_PLAIN=(); RIGHT_PAINT=(); }
-
-  clear 2>/dev/null || printf '\033[H\033[2J'
-  printf '\n'
+  if (( wide )); then
+    build_right
+  else
+    RIGHT_PLAIN=() RIGHT_PAINT=()
+  fi
 
   local clock; clock=$(date +%H:%M 2>/dev/null || echo "--:--")
   local head_left="  OMARCHY SERVER${SEP}MAIN MENU"
   local head_right="node ${host}${SEP}${clock}  "
   local head_pad=$(( cols - ${#head_left} - ${#head_right} ))
   (( head_pad > 0 )) || head_pad=1
-  printf '%s%s%s%*s%s%s\n\n' "$OMARCHY_BBS_ACCENT_BG" "$OMARCHY_BBS_ON_ACCENT" \
+
+  local frame
+  printf -v frame '\n%s%s%s%*s%s%s\n\n' \
+    "$OMARCHY_BBS_ACCENT_BG" "$OMARCHY_BBS_ON_ACCENT" \
     "$head_left" "$head_pad" '' "$head_right" "$OMARCHY_BBS_RESET"
 
   local rows=${#LEFT_PAINT[@]}
   (( ${#RIGHT_PAINT[@]} > rows )) && rows=${#RIGHT_PAINT[@]}
 
-  local index
+  local index line
   for (( index = 0; index < rows; index++ )); do
-    printf '  '
+    line="  "
     if (( index < ${#LEFT_PAINT[@]} )); then
-      printf '%s' "${LEFT_PAINT[$index]}"
+      line+="${LEFT_PAINT[$index]}"
     else
-      printf '%*s' $(( LEFT_W + 2 )) ''
+      line+=$(repeat ' ' $(( LEFT_W + 2 )))
     fi
     if (( wide )) && (( index < ${#RIGHT_PAINT[@]} )) && [[ -n ${RIGHT_PAINT[$index]} ]]; then
-      printf '  %s' "${RIGHT_PAINT[$index]}"
+      line+="  ${RIGHT_PAINT[$index]}"
     fi
-    printf '\n'
+    # Each line clears to its own end, so a shorter frame cannot leave the
+    # tail of a longer one behind it.
+    frame+="$line"$'\033[K\n'
   done
 
-  printf '\n  %s[%s↑↓%s] select  [%sENTER%s] open  [%shotkey%s] jump  [%sQ%s] shell%s\n' \
+  frame+=$'\n'
+  frame+=$(printf '  %s[%s↑↓%s] select  [%sENTER%s] open  [%shotkey%s] jump  [%sQ%s] shell%s' \
     "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_KEY" "$OMARCHY_BBS_DIM" \
     "$OMARCHY_BBS_KEY" "$OMARCHY_BBS_DIM" \
     "$OMARCHY_BBS_KEY" "$OMARCHY_BBS_DIM" \
-    "$OMARCHY_BBS_KEY" "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET"
+    "$OMARCHY_BBS_KEY" "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET")
+  frame+=$'\033[K\n'
+
+  # Home, draw, then clear whatever the last frame left below this one.
+  printf '\033[H%s\033[J' "$frame"
 }
 
 # ---- doors ---------------------------------------------------------------
@@ -290,8 +323,13 @@ draw() {
 # inside one is still inside the front door, so a shell it opens must not greet
 # again.
 door() {
+  # The tool owns the screen now, including the cursor it may want to show.
+  printf '\033[?25h'
   clear 2>/dev/null || printf '\033[H\033[2J'
   OMARCHY_BBS_SESSION=1 "$@"
+  local status=$?
+  printf '\033[?25l'
+  return $status
 }
 
 missing() {
@@ -384,11 +422,24 @@ if (( READ_INPUT )) && [[ ! -t 0 || ! -t 1 ]]; then
 fi
 
 gather
-draw
 
 # Draws the frame once and leaves, for tests and for looking at the layout
 # without taking over a session.
-(( READ_INPUT )) || exit 0
+if (( READ_INPUT == 0 )); then
+  draw
+  exit 0
+fi
+
+# A cursor parked mid-frame blinks over the drawing, and a menu that exits
+# without restoring it leaves the shell without one.
+restore_terminal() {
+  printf '\033[?25h'
+}
+trap restore_terminal EXIT INT TERM
+
+clear 2>/dev/null || printf '\033[H\033[2J'
+printf '\033[?25l'
+draw
 
 while true; do
   IFS= read -rsn1 key </dev/tty || break
@@ -407,6 +458,7 @@ while true; do
       ;;
     "")
       open_door || break
+      clear 2>/dev/null || printf '\033[H\033[2J'
       gather
       draw
       ;;
@@ -421,6 +473,7 @@ while true; do
       [[ -n $index ]] || continue
       selected=$index
       open_door || break
+      clear 2>/dev/null || printf '\033[H\033[2J'
       gather
       draw
       ;;

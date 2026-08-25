@@ -127,3 +127,48 @@ pass "the menu shows the machine's motd"
   "$ROOT/bin/omarchy-server-menu" </dev/null 2>&1 >/dev/null || true) == *"needs a terminal"* ]] ||
   fail "the menu refuses to run without a terminal rather than drawing into a pipe"
 pass "the menu refuses to run without a terminal"
+
+# A long value used to push its border out on that row alone. Hostnames,
+# interface lists and themes are all longer on somebody else's machine, so the
+# frame has to hold regardless of what the readings say.
+long_host=$(mktemp -d)
+cat >"$long_host/uname" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == "-n" ]]; then
+  echo "a-very-long-hostname-that-will-not-fit.example.internal"
+else
+  exec /usr/bin/uname "$@"
+fi
+STUB
+cat >"$long_host/omarchy-theme-current" <<'STUB'
+#!/bin/bash
+echo "A Theme Name Far Longer Than Its Column Allows"
+STUB
+chmod +x "$long_host"/*
+
+stretched=$(env PATH="$long_host:$workdir/stub:$ROOT/bin:$PATH" OMARCHY_PATH="$ROOT" \
+  XDG_CONFIG_HOME="$workdir/config" COLUMNS=100 \
+  "$ROOT/bin/omarchy-server-menu" --no-input 2>/dev/null || true)
+
+printf '%s' "$stretched" | python3 -c '
+import re
+import sys
+
+strip = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+widths = {}
+
+for number, line in enumerate(sys.stdin.read().split("\n")):
+    plain = strip.sub("", line)
+    stripped = plain.strip()
+    if not stripped.startswith(("│", "┌", "└")):
+        continue
+    if stripped.count("│") + stripped.count("┌") + stripped.count("└") < 3:
+        continue
+    widths.setdefault(len(plain), []).append(number)
+
+if len(widths) > 1:
+    sys.exit("a long reading pushed a border out: %r" % widths)
+' || fail "a long reading is truncated rather than stretching its box"
+pass "long readings are truncated rather than stretching their box"
+
+rm -rf "$long_host"
