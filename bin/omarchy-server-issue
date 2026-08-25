@@ -1,0 +1,85 @@
+#!/bin/bash
+
+# omarchy:summary=Render the themed pre-login banner into /etc/issue
+# omarchy:args=[--print] [--file <colors.toml>]
+# omarchy:examples=omarchy server issue --print
+# omarchy:requires-sudo=true
+
+# Even the getty should say who is answering. agetty expands its own escapes
+# every time it draws this file, so the hostname, address, and tty stay correct
+# without anything regenerating them:
+#
+#   \n  nodename    \4  first IPv4 address    \l  tty
+#
+# Only the colors are baked in, which is why omarchy-theme-set calls this.
+#
+# The console is the only consumer: SSH reads /etc/issue.net, not this file. So
+# the glyphs are plain ASCII, because a console font missing box drawing
+# substitutes characters and wrecks the alignment. The colors are still full
+# truecolor, because an SGR parameter a console cannot render is approximated or
+# ignored rather than printed, and a themed banner is the whole point.
+
+set -euo pipefail
+
+PRINT_ONLY=0
+COLORS_ARGS=()
+
+usage() {
+  echo "Usage: omarchy-server-issue [--print] [--file <colors.toml>]"
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --print)
+      PRINT_ONLY=1
+      shift
+      ;;
+    --file)
+      COLORS_ARGS=(--file "${2:-}")
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Safe to call from anywhere, including omarchy-theme-set on a desktop.
+omarchy-edition-server || exit 0
+
+issue_file=${OMARCHY_ISSUE_FILE:-/etc/issue}
+
+eval "$(OMARCHY_BBS_UNICODE=0 omarchy-server-palette --truecolor ${COLORS_ARGS[@]+"${COLORS_ARGS[@]}"})"
+
+rule=$(printf '%.0s=' {1..78})
+
+banner=$(
+  printf '%s%s%s\n' "$OMARCHY_BBS_RULE" "$rule" "$OMARCHY_BBS_RESET"
+  printf ' %s%sOMARCHY SERVER%s   %snode%s %s\\n%s   %sip%s %s\\4%s   %stty%s %s\\l%s\n' \
+    "$OMARCHY_BBS_BOLD" "$OMARCHY_BBS_TITLE" "$OMARCHY_BBS_RESET" \
+    "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET" "$OMARCHY_BBS_BRIGHT" "$OMARCHY_BBS_RESET" \
+    "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET" "$OMARCHY_BBS_BRIGHT" "$OMARCHY_BBS_RESET" \
+    "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET" "$OMARCHY_BBS_BRIGHT" "$OMARCHY_BBS_RESET"
+  printf '%s%s%s\n' "$OMARCHY_BBS_RULE" "$rule" "$OMARCHY_BBS_RESET"
+  printf '\n'
+)
+
+if (( PRINT_ONLY )); then
+  printf '%s\n' "$banner"
+  exit 0
+fi
+
+# Escalate only when the target needs it, so the installer can call this as root
+# from the ISO chroot where there is no terminal to answer a password prompt in.
+issue_dir=$(dirname "$issue_file")
+
+if [[ -w $issue_file ]] || { [[ ! -e $issue_file && -w $issue_dir ]]; }; then
+  printf '%s\n' "$banner" >"$issue_file"
+else
+  printf '%s\n' "$banner" | sudo tee "$issue_file" >/dev/null
+fi
