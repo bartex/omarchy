@@ -91,4 +91,15 @@ Existing migrations need no retrofit. The `omarchy` package seeds `/etc/skel/.lo
 
 **Refresh commands** that copy a GUI config into `~/.config` should gate the same way.
 
+**Install steps** already gated, as the pattern to follow:
+
+| Step | Why |
+| --- | --- |
+| `install/login/all.sh` | SDDM is the desktop's login manager; a server boots to a getty |
+| `install/config/theme-system.sh` | Nautilus icons and Chromium policy |
+| `install/config/lockscreen-pam.sh` | hyprlock |
+| the tail of `install/config/enable-services.sh` | `cups`, `cups-browsed`, `avahi-daemon`, `power-profiles-daemon`, `sddm` |
+
+That last one is the reason this matters rather than being tidiness: `systemctl enable` on a unit whose package was never installed fails, and `omarchy-apply-system` runs under `set -euo pipefail`. Use a full `if`, not `predicate && command`, for the same reason.
+
 **Do not gate** anything the two editions share: pacman, snapper, the update pipeline, the CLI, or the terminal side of a theme. One update pipeline, two editions.
