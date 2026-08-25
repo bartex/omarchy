@@ -37,7 +37,7 @@ An unrecognized marker fails loudly: `omarchy-edition` exits non-zero and both p
 | `install/omarchy-base.packages` | desktop |
 | `install/omarchy-server.packages` | server |
 
-The server list is derived from the base list by subtraction, plus two additions that the base list cannot supply (`openssh`, `rsync`). `test/shell.d/server-packages-test.sh` enforces that shape: anything in the server list that is neither in the base list nor a declared addition fails the suite.
+The server list is derived from the base list by subtraction, plus three additions the base list cannot supply: `openssh` (the desktop gets it from the ISO's own `archinstall.packages`), `rsync`, and `lazyjournal` (the menu's log door, packaged in `omarchy-pkgs`). `test/shell.d/server-packages-test.sh` enforces that shape: anything in the server list that is neither in the base list nor a declared addition fails the suite.
 
 Commands that install the default package set pick their list from the edition. `omarchy-reinstall-pkgs` is the example to copy.
 

@@ -24,10 +24,11 @@ read_list "$server_packages" >"$workdir/server"
 # The list is derived from the base list by subtraction. Anything else in it is
 # either a typo or an addition that deserves to be named here on purpose.
 #
-#   openssh - the desktop gets it from the ISO's archinstall.packages, and the
-#             server edition cannot assume that list.
-#   rsync   - the transport a headless box is administered over.
-printf 'openssh\nrsync\n' >"$workdir/server-only"
+#   openssh     - the desktop gets it from the ISO's archinstall.packages, and
+#                 the server edition cannot assume that list.
+#   rsync       - the transport a headless box is administered over.
+#   lazyjournal - the menu's log door, packaged in omarchy-pkgs.
+printf 'openssh\nrsync\nlazyjournal\n' >"$workdir/server-only"
 
 while IFS= read -r package; do
   grep -Fxq "$package" "$workdir/base" && continue
@@ -35,7 +36,7 @@ while IFS= read -r package; do
     fail "every server package comes from omarchy-base.packages or is a declared addition" \
       "$package is in neither"
 done <"$workdir/server"
-pass "the server list is a subtraction from the base list, plus openssh and rsync"
+pass "the server list is a subtraction from the base list, plus its declared additions"
 
 while IFS= read -r package; do
   grep -Fxq "$package" "$workdir/server" ||
@@ -57,7 +58,7 @@ done
 pass "the server list ships no compositor, shell, login manager, or GUI stack"
 
 # The point of the edition is that the CLI and the TUI toolbox survive intact.
-for package in docker docker-compose btop lazygit lazydocker ufw tmux git gum \
+for package in docker docker-compose btop lazygit lazydocker lazyjournal ufw tmux git gum \
   starship bat eza fzf ripgrep jq nvim openssh; do
   grep -Fxq "$package" "$workdir/server" ||
     fail "the server list keeps the CLI and TUI toolbox" "$package is missing"
