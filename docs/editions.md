@@ -49,12 +49,35 @@ The server edition greets a login the way a bulletin board did. Three surfaces, 
 | --- | --- |
 | `omarchy-server-palette` | Translates the active theme into shell-sourceable ANSI escapes. `eval "$(omarchy-server-palette)"` puts `$OMARCHY_BBS_ACCENT` and friends in scope. |
 | `omarchy-server-issue` | Renders `/etc/issue`, the pre-login banner agetty draws on the console. |
+| `omarchy-server-splash` | Draws the login splash. Exits 0 when the caller chose the menu, non-zero when they chose a shell. |
+| `omarchy-server-greet` | Reads or sets what a login lands on: `splash`, `menu`, or `off`. Per user. |
+| `default/bash/server-greet` | The hook, sourced from `default/bash/init`. Guards, then greets. |
 
 The palette names roles, not colors, so a theme can move a hue without every renderer following it: `ACCENT FG DIM RULE BRIGHT TITLE KEY OK WARN INFO ALERT ACCENT_BG SELECTION_BG ON_ACCENT`, plus `RESET` and `BOLD`.
 
 Two axes degrade independently, because they fail differently. **Color depth** falls from truecolor to 16 SGR codes, and an SGR parameter a terminal cannot render is ignored or approximated rather than printed. **Glyphs** fall from box drawing to ASCII, signalled by `$OMARCHY_BBS_UNICODE`, because a console font missing box characters substitutes them and wrecks the alignment. `TERM=linux` gets both floors.
 
 `omarchy-server-issue` is called by `omarchy-theme-set`, so switching themes restyles the banner. On the desktop edition it does nothing, which is why that call needs no guard around it - except that a machine which was a server long enough to get a banner has its stock `/etc/issue` restored from the copy kept beside it. The marker is writable, and a desktop should not keep greeting people as a server. It leaves agetty's own escapes in the file (`\n` nodename, `\4` IPv4, `\l` tty) so the hostname and address stay correct without anything regenerating them.
+
+### The greeting guard
+
+`default/bash/server-greet` is sourced on every bash startup, including all the ones that must stay silent. A single byte on stdout breaks `scp`, `sftp` and `rsync`, which parse the stream as protocol, and a blocking read breaks `ssh host <command>` for anything automated. So the guards are exhaustive, and they run cheapest first:
+
+| Condition | Silences |
+| --- | --- |
+| `$-` has no `i` | `scp`, `sftp`, `rsync`, `ssh host <command>`, every script that starts a shell |
+| `$OMARCHY_BBS_SESSION` set | A shell opened from inside the front door |
+| `$SSH_ORIGINAL_COMMAND` set | A forced command, or an explicit remote command |
+| `$TMUX` set | `tmux attach`, which is a reconnection rather than an arrival |
+| stdin or stdout is not a tty | Anything with nothing to draw on |
+| `$SSH_CONNECTION` set without `$SSH_TTY` | `ssh -T` and other sessions with no pty |
+| No readable edition marker | Every desktop, at the cost of one stat and no subprocess |
+| Marker is not `server` | The desktop edition |
+| Greet mode is `off` | Anyone who asked for a plain shell |
+
+The marker is read inline rather than through `omarchy-edition-server`, because the common case is a desktop where the file does not exist, and that case should not fork.
+
+`test/shell.d/server-greet-test.sh` covers each row. It drives a real pty through Python rather than `script`, whose arguments differ between util-linux and BSD.
 
 ## Gating rules
 
