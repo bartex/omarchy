@@ -35,12 +35,16 @@ guarded() {
   timeout "${1}s" "${@:2}" 2>/dev/null || true
 }
 
+# Built with parameter expansion rather than tr, which substitutes bytes: the
+# rule character is three bytes in UTF-8, so tr would replace only the first and
+# emit invalid sequences the terminal draws as missing glyphs.
 rule() {
   local width=$(( cols - 4 ))
   (( width > 0 )) || width=1
-  printf '  %s' "$OMARCHY_BBS_RULE"
-  printf "%${width}s" "" | tr ' ' "$rule_char"
-  printf '%s\n' "$OMARCHY_BBS_RESET"
+
+  local blanks
+  printf -v blanks '%*s' "$width" ''
+  printf '  %s%s%s\n' "$OMARCHY_BBS_RULE" "${blanks// /$rule_char}" "$OMARCHY_BBS_RESET"
 }
 
 field() {
@@ -92,7 +96,10 @@ callers=$(guarded 2 last --since today | awk 'NF && $1 != "wtmp" { print $1 }' |
 [[ -n $callers ]] || callers="0"
 
 host=$(uname -n 2>/dev/null || echo "-")
-address=$(guarded 2 hostname -I | awk '{ print $1 }')
+# iproute2, not hostname -I: Arch's hostname comes from inetutils, which has no
+# such flag, and answers with nothing at all.
+address=$(guarded 2 ip -4 -oneline address show scope global |
+  awk 'NR == 1 { split($4, cidr, "/"); print cidr[1] }')
 [[ -n $address ]] || address="-"
 tty_name=$(tty 2>/dev/null | sed 's|^/dev/||')
 [[ -n $tty_name && $tty_name != "not a tty" ]] || tty_name="-"

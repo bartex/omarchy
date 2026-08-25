@@ -173,3 +173,30 @@ narrow=$(PATH="$workdir/stub:$ROOT/bin:$PATH" OMARCHY_PATH="$ROOT" \
 [[ $narrow != *"▀█████▀"* ]] || fail "a narrow terminal gets no wordmark to wrap"
 [[ $narrow == *"OMARCHY SERVER"* ]] || fail "a narrow terminal still gets the header"
 pass "the wordmark is dropped rather than wrapped on a narrow terminal"
+
+# Byte-oriented tools mangle the box-drawing characters: the rule character is
+# three bytes in UTF-8, and a substitution that replaces only the first emits
+# sequences a terminal draws as missing glyphs. Cheap to reintroduce, invisible
+# in review, obvious on a screen.
+printf '%s' "$splash_out" | python3 -c '
+import sys
+
+data = sys.stdin.buffer.read()
+try:
+    text = data.decode("utf-8")
+except UnicodeDecodeError as broken:
+    sys.exit("splash emitted invalid UTF-8: %s" % broken)
+
+if "\u2550" not in text:
+    sys.exit("splash drew no rule")
+if "\ufffd" in text:
+    sys.exit("splash emitted a replacement character")
+' || fail "the splash draws box characters whole"
+pass "the splash emits well-formed UTF-8 for its box characters"
+
+ascii_out=$(PATH="$workdir/stub:$ROOT/bin:$PATH" OMARCHY_PATH="$ROOT" \
+  OMARCHY_BBS_UNICODE=0 "$ROOT/bin/omarchy-server-splash" --no-input 2>/dev/null || true)
+LC_ALL=C printf '%s' "$ascii_out" | grep -q '[^[:print:][:space:]'$'\033'']' &&
+  fail "the ASCII fallback stays inside ASCII"
+[[ $ascii_out == *"===="* ]] || fail "the ASCII fallback still draws a rule"
+pass "the ASCII fallback stays inside ASCII and still draws its rule"
