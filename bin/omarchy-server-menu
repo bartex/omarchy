@@ -323,11 +323,15 @@ draw() {
 # inside one is still inside the front door, so a shell it opens must not greet
 # again.
 door() {
-  # The tool owns the screen now, including the cursor it may want to show.
+  # The tool owns the terminal now: its cursor, and its own idea of echo and
+  # line editing. Handing back the settings we found is the only way anything
+  # with a prompt inside it works.
   printf '\033[?25h'
+  cooked_terminal
   clear 2>/dev/null || printf '\033[H\033[2J'
   OMARCHY_BBS_SESSION=1 "$@"
   local status=$?
+  raw_terminal
   printf '\033[?25l'
   return $status
 }
@@ -430,12 +434,67 @@ if (( READ_INPUT == 0 )); then
   exit 0
 fi
 
-# A cursor parked mid-frame blinks over the drawing, and a menu that exits
-# without restoring it leaves the shell without one.
+SAVED_STTY=""
+
+# Echo has to be off for the whole session, not just during a read. Between
+# reads the terminal driver is the one printing, and what a held arrow key
+# sends it is ^[[A.
+raw_terminal() {
+  stty -echo -icanon min 1 time 0 </dev/tty 2>/dev/null || true
+}
+
+cooked_terminal() {
+  [[ -n $SAVED_STTY ]] && stty "$SAVED_STTY" </dev/tty 2>/dev/null || true
+}
+
 restore_terminal() {
   printf '\033[?25h'
+  cooked_terminal
 }
+
+SAVED_STTY=$(stty -g </dev/tty 2>/dev/null || true)
 trap restore_terminal EXIT INT TERM
+raw_terminal
+
+move() {
+  local count=${#KEYS[@]}
+  selected=$(( (selected + $1 + count) % count ))
+}
+
+# Sets ACTION to what the key asked for, so the caller can decide whether it is
+# worth redrawing for.
+ACTION=""
+handle_key() {
+  local key=$1 rest upper index
+  ACTION=""
+
+  case "$key" in
+    $'\e')
+      # An arrow arrives as three bytes. Read the rest without blocking, so a
+      # bare Escape is not mistaken for a truncated sequence.
+      read -rsn2 -t 0.05 rest </dev/tty || rest=""
+      case "$rest" in
+        "[A" | "OA") move -1 ;;
+        "[B" | "OB") move 1 ;;
+      esac
+      ;;
+    "" | $'\r' | $'\n')
+      ACTION="open"
+      ;;
+    *)
+      # Hotkey jump: select it and open it in one press, which is what a BBS
+      # letter key did.
+      upper=$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')
+      for index in "${!KEYS[@]}"; do
+        if [[ ${KEYS[$index]} == "$upper" ]]; then
+          selected=$index
+          ACTION="open"
+          break
+        fi
+      done
+      ;;
+  esac
+}
 
 clear 2>/dev/null || printf '\033[H\033[2J'
 printf '\033[?25l'
@@ -443,41 +502,25 @@ draw
 
 while true; do
   IFS= read -rsn1 key </dev/tty || break
+  handle_key "$key"
 
-  case "$key" in
-    $'\e')
-      # An arrow key arrives as three bytes. Read the rest without blocking, so
-      # a bare Escape is not mistaken for a truncated sequence.
-      read -rsn2 -t 0.05 rest </dev/tty || rest=""
-      case "$rest" in
-        "[A") (( selected > 0 )) && selected=$(( selected - 1 )) || selected=$(( ${#KEYS[@]} - 1 )) ;;
-        "[B") selected=$(( (selected + 1) % ${#KEYS[@]} )) ;;
-        *) continue ;;
-      esac
-      draw
-      ;;
-    "")
-      open_door || break
-      clear 2>/dev/null || printf '\033[H\033[2J'
-      gather
-      draw
-      ;;
-    *)
-      # Hotkey jump: select it and open it in one press, which is what a BBS
-      # letter key did.
-      upper=$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')
-      index=""
-      for i in "${!KEYS[@]}"; do
-        [[ ${KEYS[$i]} == "$upper" ]] && index=$i && break
-      done
-      [[ -n $index ]] || continue
-      selected=$index
-      open_door || break
-      clear 2>/dev/null || printf '\033[H\033[2J'
-      gather
-      draw
-      ;;
-  esac
+  # A held arrow repeats faster than a redraw, so the queue would otherwise
+  # outlive the keypress and the marker would keep travelling after release.
+  # Everything already waiting is applied first, then the frame is drawn once.
+  while [[ -z $ACTION ]] && read -rsn1 -t 0 </dev/tty 2>/dev/null; do
+    IFS= read -rsn1 key </dev/tty || break 2
+    handle_key "$key"
+  done
+
+  draw
+
+  if [[ $ACTION == "open" ]]; then
+    open_door || break
+    clear 2>/dev/null || printf '\033[H\033[2J'
+    gather
+    draw
+  fi
 done
 
+restore_terminal
 clear 2>/dev/null || printf '\033[H\033[2J'
