@@ -55,6 +55,13 @@ done
 [[ $wide_plain == *"select"* && $wide_plain == *"jump"* ]] || fail "the menu draws its key legend"
 pass "the menu draws both panes and the key legend"
 
+# A board with more than one line numbered them and told the caller which one
+# they were on, which is the same fact as concurrent sessions.
+signed=$(menu COLUMNS=100 USER=sysop | strip_ansi)
+[[ $signed == *"sysop@"* ]] || fail "the footer names who is calling"
+[[ $signed =~ node\ [0-9]+ ]] || fail "the footer names which node they are on"
+pass "the footer names the caller and their node"
+
 # Colour is invisible to width arithmetic, so a border that lines up on the
 # author's terminal can still be a column out. Measuring is the only way this
 # stays true, and it is the failure a reader cannot see in a diff.
