@@ -91,9 +91,15 @@ pass "color depth and glyph set degrade independently"
 # silent and successful on a desktop.
 printf 'desktop\n' >"$OMARCHY_EDITION_FILE"
 export OMARCHY_ISSUE_FILE="$workdir/issue"
+printf 'Arch Linux \\r (\\l)\n' >"$OMARCHY_ISSUE_FILE"
+stock=$(cat "$OMARCHY_ISSUE_FILE")
+
 output=$(omarchy-server-issue) || fail "the issue renderer succeeds on the desktop edition"
 [[ -z $output ]] || fail "the issue renderer prints nothing on the desktop edition" "$output"
-[[ ! -e $OMARCHY_ISSUE_FILE ]] || fail "the issue renderer writes nothing on the desktop edition"
+[[ $(cat "$OMARCHY_ISSUE_FILE") == "$stock" ]] ||
+  fail "the issue renderer leaves the desktop banner alone"
+[[ ! -e $OMARCHY_ISSUE_FILE.omarchy-orig ]] ||
+  fail "the issue renderer keeps no backup it never needed"
 pass "the issue renderer is a silent no-op on the desktop edition"
 
 printf 'server\n' >"$OMARCHY_EDITION_FILE"
@@ -114,3 +120,24 @@ pass "the banner is written with agetty's own escapes intact"
 LC_ALL=C grep -q '[^[:print:][:space:]'$'\033'']' "$OMARCHY_ISSUE_FILE" &&
   fail "the banner stays inside ASCII for the console"
 pass "the banner stays inside ASCII"
+
+# The edition marker is writable, so a machine can stop being a server. One that
+# was one long enough to get a banner must not keep greeting people as one.
+[[ -e $OMARCHY_ISSUE_FILE.omarchy-orig ]] ||
+  fail "the stock banner is kept before the server banner overwrites it"
+[[ $(cat "$OMARCHY_ISSUE_FILE.omarchy-orig") == "$stock" ]] ||
+  fail "the kept banner is the one that was there"
+
+omarchy-server-issue || fail "writing the banner twice is safe"
+[[ $(cat "$OMARCHY_ISSUE_FILE.omarchy-orig") == "$stock" ]] ||
+  fail "a second write does not overwrite the kept banner with the server one"
+pass "the stock banner is kept, once, before being replaced"
+
+printf 'desktop\n' >"$OMARCHY_EDITION_FILE"
+omarchy-server-issue || fail "the issue renderer succeeds when the edition changes back"
+[[ $(cat "$OMARCHY_ISSUE_FILE") == "$stock" ]] ||
+  fail "going back to the desktop edition restores the stock banner" \
+    "$(cat "$OMARCHY_ISSUE_FILE")"
+[[ ! -e $OMARCHY_ISSUE_FILE.omarchy-orig ]] ||
+  fail "the restored backup is cleaned up"
+pass "going back to the desktop edition restores the stock banner"

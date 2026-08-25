@@ -49,10 +49,37 @@ while (( $# > 0 )); do
   esac
 done
 
-# Safe to call from anywhere, including omarchy-theme-set on a desktop.
-omarchy-edition-server || exit 0
-
 issue_file=${OMARCHY_ISSUE_FILE:-/etc/issue}
+backup_file="$issue_file.omarchy-orig"
+
+# Escalate only when the target needs it, so the installer can call this as root
+# from the ISO chroot where there is no terminal to answer a password prompt in.
+write_issue() {
+  local content="$1"
+  local issue_dir
+  issue_dir=$(dirname "$issue_file")
+
+  if [[ -w $issue_file ]] || { [[ ! -e $issue_file && -w $issue_dir ]]; }; then
+    printf '%s\n' "$content" >"$issue_file"
+  else
+    printf '%s\n' "$content" | sudo tee "$issue_file" >/dev/null
+  fi
+}
+
+# Called from omarchy-theme-set on every machine, so the desktop edition has to
+# be handled here rather than guarded at each call site. Restoring matters
+# because the edition marker is writable: a machine that was a server long
+# enough to get a banner would otherwise keep greeting people as one.
+if ! omarchy-edition-server; then
+  if [[ -e $backup_file ]]; then
+    if [[ -w $issue_file && -w $backup_file ]]; then
+      mv -f "$backup_file" "$issue_file"
+    else
+      sudo mv -f "$backup_file" "$issue_file"
+    fi
+  fi
+  exit 0
+fi
 
 eval "$(OMARCHY_BBS_UNICODE=0 omarchy-server-palette --truecolor ${COLORS_ARGS[@]+"${COLORS_ARGS[@]}"})"
 
@@ -74,12 +101,14 @@ if (( PRINT_ONLY )); then
   exit 0
 fi
 
-# Escalate only when the target needs it, so the installer can call this as root
-# from the ISO chroot where there is no terminal to answer a password prompt in.
-issue_dir=$(dirname "$issue_file")
-
-if [[ -w $issue_file ]] || { [[ ! -e $issue_file && -w $issue_dir ]]; }; then
-  printf '%s\n' "$banner" >"$issue_file"
-else
-  printf '%s\n' "$banner" | sudo tee "$issue_file" >/dev/null
+# Keep whatever the distribution shipped, once, so switching back to the desktop
+# edition restores it rather than leaving a server banner behind.
+if [[ -e $issue_file && ! -e $backup_file ]]; then
+  if [[ -w $(dirname "$backup_file") ]]; then
+    cp -a "$issue_file" "$backup_file"
+  else
+    sudo cp -a "$issue_file" "$backup_file"
+  fi
 fi
+
+write_issue "$banner"
