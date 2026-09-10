@@ -366,7 +366,7 @@ door_services() {
   local unit
   unit=$(systemctl list-units --type=service --state=running --no-legend 2>/dev/null |
     awk '{ print $1 }' |
-    gum choose --header "Running services" --height 20 2>/dev/null) || return 0
+    gum choose --header "Running services" --height 20) || return 0
   [[ -n $unit ]] || return 0
   door systemctl status --no-pager "$unit"
   hold
