@@ -490,12 +490,12 @@ open_door() {
   case "${KEYS[$selected]}" in
     S) door btop ;;
     D)
-      if command -v lazydocker >/dev/null; then door lazydocker; else missing lazydocker; hold; fi
+      if omarchy-cmd-present lazydocker; then door lazydocker; else missing lazydocker; hold; fi
       ;;
     V) door_services ;;
     U) door omarchy-update; hold ;;
     L)
-      if command -v lazyjournal >/dev/null; then
+      if omarchy-cmd-present lazyjournal; then
         door lazyjournal
       else
         door journalctl --pager-end
