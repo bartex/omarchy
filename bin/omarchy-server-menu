@@ -386,15 +386,93 @@ door_network() {
   hold
 }
 
+theme_kebab() {
+  printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-'
+}
+
+draw_theme_picker() {
+  local pick=$1
+  shift
+  local -a names=("$@")
+  local name file i
+
+  name=${names[pick]}
+  file="$(omarchy-theme-dir "$(theme_kebab "$name")" 2>/dev/null)/colors.toml"
+
+  printf '\033[H'
+  printf '\n  %s%sTHEME%s\033[K\n\n' "$OMARCHY_BBS_BOLD" "$OMARCHY_BBS_TITLE" "$OMARCHY_BBS_RESET"
+
+  for i in "${!names[@]}"; do
+    if (( i == pick )); then
+      printf '  %s%s %s%s\033[K\n' "$OMARCHY_BBS_ACCENT" "$MARK" "${names[i]}" "$OMARCHY_BBS_RESET"
+    else
+      printf '    %s%s%s\033[K\n' "$OMARCHY_BBS_DIM" "${names[i]}" "$OMARCHY_BBS_RESET"
+    fi
+  done
+
+  if [[ -f $file ]]; then
+    (
+      eval "$(omarchy-server-palette --file "$file")" 2>/dev/null || exit 0
+      printf '%s' "$OMARCHY_BBS_CONSOLE_PALETTE"
+      swatch=""
+      for role in ACCENT TITLE KEY OK WARN INFO ALERT BRIGHT FG DIM RULE; do
+        var="OMARCHY_BBS_$role"
+        swatch+="${!var}$FULL$FULL"
+      done
+      printf '\n  %s%s\033[K\n' "$swatch" "$OMARCHY_BBS_RESET"
+      printf '  %s%s%s%s  %s%s%s ok  %s%s%s 3 updates ready  %s[K]%s hotkey%s\033[K\n' \
+        "$OMARCHY_BBS_BOLD" "$OMARCHY_BBS_TITLE" "$name" "$OMARCHY_BBS_RESET" \
+        "$OMARCHY_BBS_OK" "$TICK" "$OMARCHY_BBS_FG" \
+        "$OMARCHY_BBS_WARN" "!" "$OMARCHY_BBS_FG" \
+        "$OMARCHY_BBS_KEY" "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET"
+    )
+  else
+    printf '\n\033[K\n  %sno colors.toml to preview%s\033[K\n' "$OMARCHY_BBS_DIM" "$OMARCHY_BBS_RESET"
+  fi
+
+  printf '\n  %sUp/Down preview%s%sENTER apply%s%sESC keep %s%s\033[K' \
+    "$OMARCHY_BBS_DIM" "$SEP" "$OMARCHY_BBS_DIM" "$SEP" "$OMARCHY_BBS_DIM" "$current" "$OMARCHY_BBS_RESET"
+  printf '\033[J'
+}
+
 door_theme() {
+  local -a names=()
+  mapfile -t names < <(omarchy-theme-list 2>/dev/null)
+  (( ${#names[@]} )) || return 0
+
+  local current pick=0 i key rest count=${#names[@]}
+  current=$(omarchy-theme-current 2>/dev/null || echo "")
+  for i in "${!names[@]}"; do
+    [[ ${names[i]} == "$current" ]] && pick=$i
+  done
+
   clear 2>/dev/null || printf '\033[H\033[2J'
-  local theme_name
-  theme_name=$(omarchy-theme-list 2>/dev/null |
-    gum choose --header "Theme" --height 20 2>/dev/null) || return 0
-  [[ -n $theme_name ]] || return 0
-  door omarchy-theme-set "$theme_name"
-  # The palette this menu is drawn in just changed underneath it.
+
+  while true; do
+    draw_theme_picker "$pick" "${names[@]}"
+    IFS= read -rsn1 key </dev/tty || { key="q"; }
+    case "$key" in
+      $'\e')
+        read -rsn2 -t 0.05 rest </dev/tty || rest=""
+        case "$rest" in
+          "[A" | "OA") pick=$(( (pick + count - 1) % count )) ;;
+          "[B" | "OB") pick=$(( (pick + 1) % count )) ;;
+          "") break ;;
+        esac
+        ;;
+      k) pick=$(( (pick + count - 1) % count )) ;;
+      j) pick=$(( (pick + 1) % count )) ;;
+      "" | $'\r' | $'\n')
+        door omarchy-theme-set "${names[pick]}"
+        break
+        ;;
+      q | Q) break ;;
+    esac
+  done
+
+  # The last preview must not linger on the VT.
   eval "$(omarchy-server-palette)"
+  printf '%s' "$OMARCHY_BBS_CONSOLE_PALETTE"
 }
 
 door_backup() {
