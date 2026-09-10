@@ -81,11 +81,12 @@ if ! omarchy-edition-server; then
   exit 0
 fi
 
-eval "$(OMARCHY_BBS_UNICODE=0 omarchy-server-palette --truecolor ${COLORS_ARGS[@]+"${COLORS_ARGS[@]}"})"
+eval "$(OMARCHY_BBS_UNICODE=0 omarchy-server-palette --truecolor --console ${COLORS_ARGS[@]+"${COLORS_ARGS[@]}"})"
 
 rule=$(printf '%.0s=' {1..78})
 
 banner=$(
+  printf '%s' "$OMARCHY_BBS_CONSOLE_PALETTE"
   printf '%s%s%s\n' "$OMARCHY_BBS_RULE" "$rule" "$OMARCHY_BBS_RESET"
   printf ' %s%sOMARCHY SERVER%s   %snode%s %s\\n%s   %sip%s %s\\4%s   %stty%s %s\\l%s\n' \
     "$OMARCHY_BBS_BOLD" "$OMARCHY_BBS_TITLE" "$OMARCHY_BBS_RESET" \

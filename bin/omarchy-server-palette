@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Emit the active theme as shell-sourceable ANSI escapes for the server front door
-# omarchy:args=[--file <colors.toml>] [--truecolor|--ansi] [--names]
+# omarchy:args=[--file <colors.toml>] [--truecolor|--ansi] [--names] [--console]
 # omarchy:examples=eval "$(omarchy-server-palette)" | omarchy-server-palette --ansi
 
 # The pre-login issue file, the login splash, and the home menu all draw in the
@@ -18,9 +18,10 @@ set -euo pipefail
 COLORS_FILE=""
 DEPTH=""
 NAMES_ONLY=0
+CONSOLE=""
 
 usage() {
-  echo "Usage: omarchy-server-palette [--file <colors.toml>] [--truecolor|--ansi] [--names]"
+  echo "Usage: omarchy-server-palette [--file <colors.toml>] [--truecolor|--ansi] [--names] [--console]"
 }
 
 while (( $# > 0 )); do
@@ -39,6 +40,10 @@ while (( $# > 0 )); do
       ;;
     --names)
       NAMES_ONLY=1
+      shift
+      ;;
+    --console)
+      CONSOLE=1
       shift
       ;;
     -h | --help)
@@ -83,6 +88,15 @@ else
   unicode=1
 fi
 
+# \e]P must only reach a VT: other terminals read it as a malformed OSC.
+if [[ -z $CONSOLE ]]; then
+  if [[ ${TERM:-} == "linux" ]]; then
+    CONSOLE=1
+  else
+    CONSOLE=0
+  fi
+fi
+
 if (( NAMES_ONLY )); then
   printf '%s\n' ACCENT FG DIM RULE BRIGHT TITLE KEY OK WARN INFO ALERT \
     ACCENT_BG SELECTION_BG ON_ACCENT RESET BOLD
@@ -95,7 +109,7 @@ else
   palette=$(omarchy-theme-color --all)
 fi
 
-printf '%s\n' "$palette" | awk -F'\t' -v depth="$DEPTH" -v unicode="$unicode" '
+printf '%s\n' "$palette" | awk -F'\t' -v depth="$DEPTH" -v unicode="$unicode" -v console="$CONSOLE" '
   # role -> palette key, then the SGR code to fall back to when the terminal
   # cannot do better. Roles, not color names: a theme moves, the roles do not.
   BEGIN {
@@ -150,5 +164,15 @@ printf '%s\n' "$palette" | awk -F'\t' -v depth="$DEPTH" -v unicode="$unicode" '
     printf "OMARCHY_BBS_BOLD=$%c\\033[1m%c\n", 39, 39
     printf "OMARCHY_BBS_DEPTH=%s\n", depth
     printf "OMARCHY_BBS_UNICODE=%s\n", unicode
+
+    seq = ""
+    if (console == 1) {
+      for (i = 0; i < 16; i++) {
+        hex = color["color" i]
+        if (hex ~ /^#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$/)
+          seq = seq sprintf("\\033]P%x%s", i, substr(hex, 2))
+      }
+    }
+    printf "OMARCHY_BBS_CONSOLE_PALETTE=$%c%s%c\n", 39, seq, 39
   }
 '

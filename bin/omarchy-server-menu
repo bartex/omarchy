@@ -20,6 +20,8 @@ set -uo pipefail
 
 eval "$(omarchy-server-palette)"
 
+printf '%s' "$OMARCHY_BBS_CONSOLE_PALETTE"
+
 if [[ ${OMARCHY_BBS_UNICODE:-1} == "1" ]]; then
   TL="┌"; TR="┐"; BL="└"; BR="┘"; HR="─"; VR="│"
   SEP=" ▪ "; TICK="✓"; FULL="▓"; EMPTY="░"; MARK="▌"; ELLIPSIS="…"

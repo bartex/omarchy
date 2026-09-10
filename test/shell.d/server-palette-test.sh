@@ -141,3 +141,24 @@ omarchy-server-issue || fail "the issue renderer succeeds when the edition chang
 [[ ! -e $OMARCHY_ISSUE_FILE.omarchy-orig ]] ||
   fail "the restored backup is cleaned up"
 pass "going back to the desktop edition restores the stock banner"
+
+cat >"$workdir/stub/omarchy-theme-color" <<'STUB'
+#!/bin/bash
+printf 'color0\t#1a1b26\n'
+printf 'color4\t#7aa2f7\n'
+printf 'color15\t#c0caf5\n'
+STUB
+chmod +x "$workdir/stub/omarchy-theme-color"
+console=$(TERM=linux omarchy-server-palette --ansi)
+grep -qF "OMARCHY_BBS_CONSOLE_PALETTE=\$'\\033]P01a1b26\\033]P47aa2f7\\033]Pfc0caf5'" <<<"$console" ||
+  fail "the console palette programs each shipped colorN slot" \
+    "$(grep '^OMARCHY_BBS_CONSOLE_PALETTE=' <<<"$console")"
+pass "the console palette maps colorN onto the VT slots"
+
+grep -qF "OMARCHY_BBS_CONSOLE_PALETTE=\$''" <<<"$(TERM=xterm-256color omarchy-server-palette --ansi)" ||
+  fail "the palette program stays off terminals that are not the console"
+pass "no palette program leaks to a non-console terminal"
+
+grep -qF "\\033]P01a1b26" <<<"$(TERM=xterm-256color omarchy-server-palette --truecolor --console)" ||
+  fail "--console forces the program for output that renders on a VT later"
+pass "--console forces the palette program regardless of TERM"

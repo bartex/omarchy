@@ -20,6 +20,8 @@ READ_INPUT=1
 
 eval "$(omarchy-server-palette)"
 
+printf '%s' "$OMARCHY_BBS_CONSOLE_PALETTE"
+
 cols=$(tput cols 2>/dev/null || echo 80)
 (( cols > 0 )) || cols=80
 
