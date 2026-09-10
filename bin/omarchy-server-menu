@@ -33,9 +33,9 @@ fi
 LEFT_W=44
 RIGHT_W=34
 
-KEYS=(S D V U L B N T Q)
-LABELS=("STATUS" "DOCKER" "SERVICES" "UPDATE" "LOGS" "BACKUP" "NETWORK" "THEME" "QUIT TO SHELL")
-HINTS=("" "" "" "" "" "" "" "" "")
+KEYS=(S D V U L B N T G Q)
+LABELS=("STATUS" "DOCKER" "SERVICES" "UPDATE" "LOGS" "BACKUP" "NETWORK" "THEME" "GOODBYE" "QUIT TO SHELL")
+HINTS=("" "" "" "" "" "" "" "" "" "")
 selected=0
 
 guarded() { timeout "${1}s" "${@:2}" 2>/dev/null || true; }
@@ -124,7 +124,8 @@ gather() {
   HINTS[5]="$backup_text"
   HINTS[6]="firewall${SEP}dns"
   HINTS[7]="$theme"
-  HINTS[8]=""
+  HINTS[8]="splash"
+  HINTS[9]=""
 }
 
 # The backup plan is unbuilt. This is the whole seam: replacing it with the real
@@ -425,6 +426,7 @@ open_door() {
     B) door_backup ;;
     N) door_network ;;
     T) door_theme ;;
+    G) door omarchy-server-splash || return 1 ;;
     Q) return 1 ;;
   esac
   return 0

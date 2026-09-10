@@ -173,6 +173,9 @@ while IFS= read -rsn1 key; do
   case "$key" in
     "")
       printf '\n'
+      if [[ -z ${OMARCHY_BBS_SESSION:-} ]]; then
+        OMARCHY_BBS_SESSION=1 exec omarchy-server-menu
+      fi
       exit 0
       ;;
     " ")
